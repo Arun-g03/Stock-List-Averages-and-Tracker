@@ -11,7 +11,7 @@ input end date
 input total investment amount
 
 
-select porfolio>portfolio
+select porfolio>portfolio details
 
 select add stock
 input stock code like (AMD or AMZN, lowercase is okay)
