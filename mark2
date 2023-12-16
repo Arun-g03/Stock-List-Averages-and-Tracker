@@ -1,0 +1,96 @@
+import yfinance as yf
+import matplotlib.pyplot as plt
+import pandas as pd
+import matplotlib.dates as mdates
+import mplcursors
+
+# Function to fetch and process stock data
+def get_stock_data(symbol, start_date, end_date):
+    try:
+        # Download historical stock data
+        data = yf.download(symbol, start=start_date, end=end_date)
+        if data.empty:
+            raise ValueError(f"No data found for {symbol}")
+
+        # Calculate the daily percent change
+        data['Percent Change'] = data['Close'].pct_change() * 100
+        return data
+
+    except Exception as e:
+        print(f"An error occurred: {e}")
+        return pd.DataFrame()
+
+# Function to calculate the investment value over time given an investment percentage
+def calculate_investment_value(data, initial_investment, investment_percentage):
+    percentage_allocation = initial_investment * investment_percentage
+    data['Investment Value'] = percentage_allocation * (1 + data['Percent Change'].fillna(0) / 100).cumprod()
+    return data
+
+# Function to calculate combined investment value over time
+def calculate_combined_investment_value(stock_data, initial_investment, investment_percentages):
+    combined_investment_value = pd.Series(index=stock_data[next(iter(stock_data))].index)
+
+    for symbol, data in stock_data.items():
+        investment_value = calculate_investment_value(data, initial_investment, investment_percentages[symbol])
+        combined_investment_value = combined_investment_value.add(investment_value['Investment Value'], fill_value=0)
+
+    return combined_investment_value
+
+# Function to plot data with cursor and display percent P/L
+def plot_data(stock_data, combined_investment_value, initial_investment, investment_percentages):
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(14, 10), sharex=True)
+
+    # First subplot for the closing prices
+    for symbol, data in stock_data.items():
+        if not data.empty:
+            ax1.plot(data.index, data['Close'], label=f"{symbol} Closing Price")
+    ax1.set_title('Stock Closing Prices Over Time')
+    ax1.set_ylabel('Closing Price')
+    ax1.legend()
+    ax1.grid(True)
+    plt.setp(ax1.get_xticklabels(), visible=False)
+
+    # Second subplot for the combined investment P/L
+    line, = ax2.plot(combined_investment_value.index, combined_investment_value, 'g', label="Combined Investment P/L")
+    ax2.set_title('Aggregated Investment Profit/Loss Over Time')
+    ax2.set_ylabel('P/L Value')
+    ax2.axhline(y=0, color='k', linestyle='-')
+    ax2.legend()
+    ax2.grid(True)
+    plt.gca().xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m-%d'))
+    plt.gca().xaxis.set_major_locator(mdates.MonthLocator(interval=1))
+    plt.gcf().autofmt_xdate()  # Auto-format the dates for better readability
+
+    plt.tight_layout()
+
+    # Add interactive cursors
+    cursor = mplcursors.cursor(hover=True)
+    cursor.connect("add", lambda sel: sel.annotation.set_text(
+        'Date: {}\nValue: ${:.2f}\nP/L %: {:.2f}%'.format(
+            mdates.num2date(sel.target[0]).strftime("%Y-%m-%d"),
+            sel.target[1],
+            sel.target[1] / initial_investment * 100  # Here we use the flat initial investment for P/L calculation
+        )
+    ))
+
+    plt.show()
+
+# Update the main function to accept investment percentages
+def main(stock_symbols, start_date, end_date, initial_investment, investment_percentages):
+    stock_data = {}
+
+    for symbol in stock_symbols:
+        data = get_stock_data(symbol, start_date, end_date)
+        if not data.empty:
+            stock_data[symbol] = calculate_investment_value(data, initial_investment, investment_percentages[symbol])
+
+    # Calculate the combined investment value over time for all stocks
+    combined_investment_value = calculate_combined_investment_value(stock_data, initial_investment, investment_percentages)
+
+    # Plot the stock data and the combined investment P/L
+    plot_data(stock_data, combined_investment_value, initial_investment, investment_percentages)
+
+# Example usage with investment percentages
+stock_symbols = ['AAPL', 'GOOGL', 'MSFT']
+investment_percentages = {'AAPL': 0.5, 'GOOGL': 0.3, 'MSFT': 0.2}
+main(stock_symbols, '2021-01-01', '2022-01-01', 10000, investment_percentages)
